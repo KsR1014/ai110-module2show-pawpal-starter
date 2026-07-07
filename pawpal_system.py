@@ -17,12 +17,15 @@ Design decisions (these fix the bottlenecks found during review):
 
 from __future__ import annotations
 
-from datetime import time
+from datetime import date, time, timedelta
 
 
 # Priority is an int so tasks sort naturally: 1 = high, 2 = medium, 3 = low.
 HIGH, MEDIUM, LOW = 1, 2, 3
 _PRIORITY_NAME = {HIGH: "high", MEDIUM: "medium", LOW: "low"}
+
+# How far ahead each recurring frequency repeats. A missing key means "one-off".
+_FREQUENCY_DAYS = {"daily": 1, "weekly": 7}
 
 
 def _to_minutes(t: time) -> int:
@@ -48,6 +51,7 @@ class Task:
         frequency: str = "daily",
         fixed_time: time | None = None,
         completed: bool = False,
+        due_date: date | None = None,
     ) -> None:
         """Create a care task with its duration, priority, and scheduling info."""
         self.description = description
@@ -57,10 +61,38 @@ class Task:
         self.frequency = frequency        # e.g. "daily", "weekly"
         self.fixed_time = fixed_time      # None if the task can float
         self.completed = completed
+        self.due_date = due_date          # the day this task is due (None = today)
 
     def is_fixed(self) -> bool:
         """Return True if this task must happen at a specific clock time."""
         return self.fixed_time is not None
+
+    def is_recurring(self) -> bool:
+        """Return True if this task repeats (e.g. 'daily' or 'weekly')."""
+        return self.frequency in _FREQUENCY_DAYS
+
+    def next_occurrence(self) -> "Task | None":
+        """Build the next instance of a recurring task, or None if it's one-off.
+
+        The follow-up is a fresh, uncompleted copy whose due_date advances by
+        1 day for "daily" or 7 days for "weekly", computed with timedelta so
+        month/year rollovers are handled correctly. If this task has no due_date
+        yet, we anchor the next occurrence off today.
+        """
+        step = _FREQUENCY_DAYS.get(self.frequency)
+        if step is None:
+            return None
+        base = self.due_date or date.today()
+        return Task(
+            description=self.description,
+            duration_min=self.duration_min,
+            priority=self.priority,
+            category=self.category,
+            frequency=self.frequency,
+            fixed_time=self.fixed_time,
+            completed=False,
+            due_date=base + timedelta(days=step),
+        )
 
     def mark_done(self) -> None:
         """Mark this task complete so the scheduler skips it."""
@@ -166,6 +198,78 @@ class Scheduler:
     def __init__(self, constraints: dict | None = None) -> None:
         """Create a scheduler with optional global constraints."""
         self.constraints = constraints if constraints is not None else {}
+
+    @staticmethod
+    def sort_by_time(tasks: list[Task]) -> list[Task]:
+        """Return the tasks ordered by their fixed clock time (earliest first).
+
+        Uses sorted() with a lambda key. The key is a tuple so floating tasks
+        (fixed_time is None, which can't be compared to a real time) are pushed
+        to the end while timed tasks stay in chronological order:
+          * (False, 08:00) sorts before (False, 09:30) before (True, ...).
+        """
+        return sorted(
+            tasks,
+            key=lambda t: (t.fixed_time is None, t.fixed_time or time(0, 0)),
+        )
+
+    @staticmethod
+    def filter_tasks(
+        owner: Owner,
+        pet_name: str | None = None,
+        completed: bool | None = None,
+    ) -> list[tuple[Pet, Task]]:
+        """Return (pet, task) pairs filtered by pet name and/or completion.
+
+        Both filters are optional; leaving one as None means "don't filter on
+        it". So filter_tasks(owner, pet_name="Biscuit", completed=False) returns
+        Biscuit's outstanding tasks only.
+        """
+        results = owner.all_tasks()
+        if pet_name is not None:
+            results = [(p, t) for p, t in results if p.name.lower() == pet_name.lower()]
+        if completed is not None:
+            results = [(p, t) for p, t in results if t.completed == completed]
+        return results
+
+    def complete_task(self, pet: Pet, task: Task) -> Task | None:
+        """Mark a task done and, if it recurs, queue up its next occurrence.
+
+        Returns the newly created follow-up task (already attached to the pet),
+        or None for a one-off task. This is where mark_done() meets frequency:
+        completing a "daily" or "weekly" task automatically rolls it forward.
+        """
+        task.mark_done()
+        follow_up = task.next_occurrence()
+        if follow_up is not None:
+            pet.add_task(follow_up)
+        return follow_up
+
+    @staticmethod
+    def detect_conflicts(owner: Owner) -> list[str]:
+        """Return warnings for pending tasks that share the same fixed time.
+
+        A lightweight pairwise scan over timed, not-yet-done tasks. It never
+        raises — it just reports each clash as a human-readable string so the
+        caller can print or ignore it. An empty list means no conflicts.
+        """
+        timed = [(p, t) for p, t in owner.pending_tasks() if t.is_fixed()]
+        warnings: list[str] = []
+        for i in range(len(timed)):
+            pet_a, task_a = timed[i]
+            for j in range(i + 1, len(timed)):
+                pet_b, task_b = timed[j]
+                if task_a.fixed_time == task_b.fixed_time:
+                    when = task_a.fixed_time.strftime("%H:%M")
+                    if pet_a is pet_b:
+                        who = f"{pet_a.name} has two tasks"
+                    else:
+                        who = f"{pet_a.name} and {pet_b.name} both have a task"
+                    warnings.append(
+                        f"⚠️  Conflict at {when}: {who} "
+                        f"('{task_a.description}' and '{task_b.description}')."
+                    )
+        return warnings
 
     def build_plan(self, owner: Owner, day_start: time = time(8, 0)) -> dict:
         """Choose, order, and time-stamp tasks for the day.

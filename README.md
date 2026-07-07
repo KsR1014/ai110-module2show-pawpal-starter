@@ -76,14 +76,30 @@ Sample test output:
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
+Beyond building a basic daily plan, PawPal+ adds four "smarter scheduling" behaviors. Each is implemented as a method on the `Scheduler` class in `pawpal_system.py` (recurring tasks also use a helper on `Task`).
 
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Sorting by time | `Scheduler.sort_by_time()` | Orders tasks chronologically; floating tasks fall last |
+| Filtering | `Scheduler.filter_tasks()` | Filter by pet name and/or completion status |
+| Conflict detection | `Scheduler.detect_conflicts()` | Warns on tasks sharing the same fixed time |
+| Recurring tasks | `Scheduler.complete_task()`, `Task.next_occurrence()` | Auto-creates the next daily/weekly instance |
+
+### Sorting behavior — `Scheduler.sort_by_time()`
+
+Returns a list of tasks ordered by their fixed clock time, earliest first. It uses `sorted()` with a lambda key built as a tuple, `(t.fixed_time is None, t.fixed_time or time(0, 0))`, so time-locked tasks sort chronologically while floating tasks (which have no `fixed_time` and can't be compared to a real time) are pushed to the end instead of raising an error.
+
+### Filtering behavior — `Scheduler.filter_tasks()`
+
+Returns `(pet, task)` pairs filtered by **pet name**, **completion status**, or both. Each filter is optional (`None` means "don't filter on it"), so `filter_tasks(owner, pet_name="Biscuit", completed=False)` returns just Biscuit's outstanding tasks. Pet-name matching is case-insensitive.
+
+### Conflict detection logic — `Scheduler.detect_conflicts()`
+
+A lightweight pairwise scan over pending, fixed-time tasks. When two tasks share the same `fixed_time`, it appends a human-readable warning string (distinguishing a single pet with two clashing tasks from two different pets clashing). It **returns a list of warnings** rather than raising, so an empty list simply means "no conflicts" and the program never crashes. Tradeoff: it matches exact start times only and does not yet detect duration overlaps.
+
+### Recurring task logic — `Scheduler.complete_task()` + `Task.next_occurrence()`
+
+Completing a task goes through `Scheduler.complete_task(pet, task)`, which marks the task done and then asks `Task.next_occurrence()` for a follow-up. For a `"daily"` or `"weekly"` task, `next_occurrence()` returns a fresh, uncompleted copy whose `due_date` is advanced with `timedelta(days=1)` or `timedelta(days=7)` (so month/year rollovers are handled correctly); the new instance is automatically attached to the pet. One-off tasks return `None` and nothing is added.
 
 ## 📸 Demo Walkthrough
 
