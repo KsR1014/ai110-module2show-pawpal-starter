@@ -60,19 +60,37 @@ Used 100 of 120 available minutes.
 
 ## 🧪 Testing PawPal+
 
+Run the full automated test suite from the project root:
+
 ```bash
-# Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
+python -m pytest
 ```
 
-Sample test output:
+**What the tests cover.** The suite in `tests/test_pawpal.py` has 15 tests spanning the core behaviors and their edge cases:
+
+- Basics: marking a task complete and adding a task to a pet.
+- Sorting (`Scheduler.sort_by_time`): tasks come back in chronological order, floating (no fixed-time) tasks sort last, and an empty list is handled safely.
+- Filtering (`Scheduler.filter_tasks`): filter by pet name (case-insensitive) and by completion status.
+- Recurrence (`Scheduler.complete_task` / `Task.next_occurrence`): completing a daily task creates a fresh instance due +1 day, weekly advances +7 days, month rollovers (Jul 31 → Aug 1) are correct, and one-off tasks spawn nothing.
+- Conflict detection (`Scheduler.detect_conflicts`): flags two pets at the same time and a single pet double-booked, returns an empty list when times are distinct (including a pet with no tasks), and ignores already-completed tasks.
+
+Successful test run:
 
 ```
-# Paste your pytest output here
+========================== test session starts ===========================
+platform darwin -- Python 3.13.13, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/kushalrajam/AI110 Class Work/ai110-module2show-pawpal-starter
+plugins: anyio-4.14.1
+collected 15 items                                                       
+
+tests/test_pawpal.py ...............                               [100%]
+
+=========================== 15 passed in 0.02s =========================== 
 ```
+
+**Confidence Level: ⭐️⭐️⭐️⭐️☆ (4/5)**
+
+All 15 tests pass and they cover every "smarter scheduling" feature along with its main edge cases (empty inputs, same-time conflicts, completed-task handling, and date rollovers), so I'm confident the core logic is reliable. I held back the fifth star because the tests don't yet cover overlapping-duration conflicts (only exact time matches), owner-preference filtering, or the full `build_plan` time-budget path under stress — those are the areas I'd test next to reach 5/5.
 
 ## 📐 Smarter Scheduling
 
