@@ -61,10 +61,22 @@ My scheduler's conflict detection only flags tasks that start at the *exact same
 - How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
 - What kinds of prompts or questions were most helpful?
 
+I used an AI assistant throughout the build: sketching the class structure (Task/Pet/Owner/Scheduler) before writing code, generating first-pass implementations of methods like `build_plan()` and `detect_conflicts()`, and wiring the Streamlit UI to the backend. 
+
+The most useful prompts were narrow and behavioral rather than open-ended ones. For example, "fixed-time tasks should never be dropped in favor of a floating task, even if the floating task has higher priority" got a much better result than "write a scheduler." 
+
+In addition, asking the AI to explain why it structured something a certain way (e.g. why `build_plan()` and `explain_plan()` are split into two methods) was useful for catching design smells early.
+
 **b. Judgment and verification**
 
 - Describe one moment where you did not accept an AI suggestion as-is.
 - How did you evaluate or verify what the AI suggested?
+
+One moment I didn't accept the suggestion as-is: an early version of `Owner.__init__` used `preferences: dict = {}` as the default argument. The empty dict would be shared across every `Owner` created without explicit preferences, so changing one owner's preferences could silently leak into another owner. 
+
+I asked for it to be rewritten to default to `None` and build a fresh dict inside the constructor instead (`self.preferences = preferences if preferences is not None else {}`).
+
+I verified the fix by creating two `Owner` objects with no preferences passed in, changing one owner's preferences, and confirming the other owner's preferences stayed empty.
 
 ---
 
@@ -75,10 +87,23 @@ My scheduler's conflict detection only flags tasks that start at the *exact same
 - What behaviors did you test?
 - Why were these tests important?
 
+1. Conflict detection: two tasks (same pet, and different pets) sharing the same `fixed_time` produce the expected warning strings, and no warning fires when times differ.
+2. Schedule building under a tight time budget: confirmed fixed-time tasks are placed even if it means floating tasks get skipped, and that skipped tasks show up with a reason ("not enough time left in the day").
+3. Priority ordering among floating tasks: verified that when two tasks tie on priority, the shorter one is scheduled first.
+4. Recurring task rollover: completing a "daily" task creates a follow-up due the next day; completing a one-off task returns `None` and doesn't create anything.
+5. Owner preferences (`no_earlier_than`, `excluded_categories`): confirmed disallowed tasks are filtered out and appear in the "skipped" list with the right reason.
+
+
 **b. Confidence**
 
 - How confident are you that your scheduler works correctly?
 - What edge cases would you test next if you had more time?
+
+I'm fairly confident in the core scheduling logic (fixed-time placement, priority ordering, time-budget accounting) since it's deterministic and I traced through it by hand against the `__main__` demo. I'm less confident about edge cases around dates and the Streamlit session state. If I had more time I'd test:
+- What happens when `available_minutes` is 0 or negative.
+- A recurring task whose `next_occurrence()` is generated but never completed again — does it pile up duplicates over multiple days?
+- Two floating tasks with identical priority *and* identical duration (is the sort still stable/predictable?).
+- Whether the Streamlit `session_state` owner object survives correctly across a full page refresh (not just a rerun).
 
 ---
 
@@ -88,10 +113,16 @@ My scheduler's conflict detection only flags tasks that start at the *exact same
 
 - What part of this project are you most satisfied with?
 
+I think in general, I'm really happy that I was able to basically build an app
+
 **b. What you would improve**
 
 - If you had another iteration, what would you improve or redesign?
 
+I'd redesign how "today" is handled. Right now tasks don't really track which day they're due in a way the UI surfaces, and the recurring-task system stores a raw `due_date` that the frontend never displays. Given another iteration, I'd surface upcoming (not just today's) tasks, and let the user see a task's due date directly in the table.
+
 **c. Key takeaway**
 
 - What is one important thing you learned about designing systems or working with AI on this project?
+
+The most important thing I learned is that AI-generated code tends to be locally correct but can hide global assumptions. Naming the invariant I actually cared about (e.g. "fixed tasks are never bumped") got much better results than describing the algorithm I imagined.
