@@ -24,6 +24,13 @@ if "owner" not in st.session_state:
 # because it's the same object stored in session_state across reruns.
 owner: Owner = st.session_state.owner
 
+# One scheduler drives all the "smart" logic (sort, filter, conflicts, recurrence).
+scheduler = Scheduler()
+
+# Flash message: set before a st.rerun(), shown once here after the rerun.
+if "flash" in st.session_state:
+    st.success(st.session_state.pop("flash"))
+
 
 # --- Owner settings ----------------------------------------------------------
 st.subheader("👤 Owner")
@@ -107,28 +114,77 @@ st.subheader("🗂️ Current Pets & Tasks")
 if not owner.pets:
     st.info("No pets yet.")
 else:
-    for pet in owner.pets:
-        st.markdown(f"**{pet.summary()}** — {len(pet.tasks)} task(s)")
-        if pet.tasks:
-            st.table(
-                [
-                    {
-                        "task": t.description,
-                        "duration (min)": t.duration_min,
-                        "priority": {HIGH: "high", MEDIUM: "medium", LOW: "low"}[t.priority],
-                        "fixed time": t.fixed_time.strftime("%H:%M") if t.is_fixed() else "—",
-                        "done": "✅" if t.completed else "",
-                    }
-                    for t in pet.tasks
-                ]
-            )
+    # Conflict detection: surface clashes immediately, as soon as they exist —
+    # before the owner even generates a schedule. Each clash is its own
+    # st.warning so it stands out without blocking the rest of the page.
+    conflicts = scheduler.detect_conflicts(owner)
+    for warning in conflicts:
+        st.warning(warning)
+    if not conflicts:
+        st.success("No scheduling conflicts. 🎉")
+
+    # Filter controls: by pet and by completion status (Scheduler.filter_tasks).
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        pet_choice = st.selectbox("Filter by pet", ["All pets"] + [p.name for p in owner.pets])
+    with col_f2:
+        status_choice = st.radio("Show", ["All", "Pending", "Done"], horizontal=True)
+
+    pet_name = None if pet_choice == "All pets" else pet_choice
+    completed = {"All": None, "Pending": False, "Done": True}[status_choice]
+
+    pairs = scheduler.filter_tasks(owner, pet_name=pet_name, completed=completed)
+
+    if not pairs:
+        st.info("No tasks match this filter.")
+    else:
+        # Sort the filtered tasks chronologically (Scheduler.sort_by_time),
+        # keeping each task mapped back to its pet for display.
+        pet_by_task = {id(task): pet for pet, task in pairs}
+        ordered = scheduler.sort_by_time([task for _pet, task in pairs])
+        st.table(
+            [
+                {
+                    "time": t.fixed_time.strftime("%H:%M") if t.is_fixed() else "—",
+                    "pet": pet_by_task[id(t)].name,
+                    "task": t.description,
+                    "duration (min)": t.duration_min,
+                    "priority": {HIGH: "high", MEDIUM: "medium", LOW: "low"}[t.priority],
+                    "repeats": t.frequency,
+                    "done": "✅" if t.completed else "",
+                }
+                for t in ordered
+            ]
+        )
+
+        # Mark-done controls: completing a recurring task auto-creates the next
+        # occurrence (Scheduler.complete_task -> Task.next_occurrence).
+        pending = [(pet_by_task[id(t)], t) for t in ordered if not t.completed]
+        if pending:
+            st.markdown("**Mark a task done** — recurring tasks auto-schedule the next one:")
+            for i, (pet, task) in enumerate(pending):
+                col_label, col_btn = st.columns([4, 1])
+                col_label.write(f"{pet.name}: {task.label()}")
+                if col_btn.button("✅ Done", key=f"done_{i}_{id(task)}"):
+                    follow_up = scheduler.complete_task(pet, task)
+                    if follow_up is not None:
+                        st.session_state.flash = (
+                            f"Marked '{task.description}' done. "
+                            f"Next one scheduled for {follow_up.due_date}."
+                        )
+                    else:
+                        st.session_state.flash = f"Marked '{task.description}' done."
+                    st.rerun()
 
 
 # --- Build the schedule ------------------------------------------------------
 st.divider()
 st.subheader("📅 Today's Schedule")
 if st.button("Generate schedule", type="primary"):
-    scheduler = Scheduler()
+    # Warn about conflicts right where the plan is built, too.
+    for warning in scheduler.detect_conflicts(owner):
+        st.warning(warning)
+
     plan = scheduler.build_plan(owner, day_start=time(8, 0))
 
     scheduled = plan["scheduled"]

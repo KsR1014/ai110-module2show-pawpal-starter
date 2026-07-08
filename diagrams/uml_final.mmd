@@ -1,0 +1,63 @@
+classDiagram
+    %% PawPal+ FINAL design — matches pawpal_system.py after Phases 3–4.
+    %% Updated to reflect the "smarter scheduling" methods and recurrence.
+
+    class Owner {
+        +str name
+        +int available_minutes
+        +dict preferences
+        +list~Pet~ pets
+        +add_pet(pet) Pet
+        +all_tasks() list~tuple~
+        +pending_tasks() list~tuple~
+        +allows(task) bool
+    }
+
+    class Pet {
+        +str name
+        +str species
+        +str breed
+        +list~Task~ tasks
+        +add_task(task) Task
+        +pending_tasks() list~Task~
+        +summary() str
+    }
+
+    class Task {
+        +str description
+        +int duration_min
+        +int priority
+        +str category
+        +str frequency
+        +time fixed_time
+        +bool completed
+        +date due_date
+        +is_fixed() bool
+        +is_recurring() bool
+        +next_occurrence() Task
+        +mark_done() void
+        +reset() void
+        +label() str
+    }
+
+    class Scheduler {
+        +dict constraints
+        +sort_by_time(tasks) list~Task~
+        +filter_tasks(owner, pet_name, completed) list~tuple~
+        +detect_conflicts(owner) list~str~
+        +complete_task(pet, task) Task
+        +build_plan(owner, day_start) dict
+        +explain_plan(plan) str
+    }
+
+    %% Structural "has-a" relationships (composition of the data model).
+    Owner "1" --> "*" Pet : has
+    Pet "1" --> "*" Task : has
+
+    %% Scheduler depends on the data model but does not own it.
+    Scheduler ..> Owner : reads constraints & tasks
+    Scheduler ..> Pet : adds recurring follow-ups
+    Scheduler ..> Task : sorts, schedules, completes
+
+    %% next_occurrence() produces a new Task instance.
+    Task ..> Task : spawns next occurrence

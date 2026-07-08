@@ -123,10 +123,17 @@ Completing a task goes through `Scheduler.complete_task(pet, task)`, which marks
 
 Describe your app in numbered steps so a reader can follow along without watching a video:
 
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
+Describe your app in numbered steps so a reader can follow along without watching a video:
+
+1. Set your daily time budget — enter your name and how many minutes you have available today for pet care (e.g. 120 minutes). This budget is what the scheduler works within.
+2. Add a pet — give it a name, species, and optional breed. Each pet gets its own list of care tasks.
+3. Add tasks to a pet — describe the task (e.g. "Morning walk"), set its duration, priority (high/medium/low), and category. Optionally pin it to a fixed clock time (like a 9:00 AM feeding) if it can't move.
+4. Review the task board — see every pet's tasks in one table, sorted chronologically, with any scheduling conflicts (two fixed-time tasks clashing) flagged automatically as warnings.
+5. Filter the view — narrow the table down by pet or by status (all / pending / done) to focus on what matters right now.
+6. Mark tasks done — check off completed tasks; recurring ones (daily/weekly) automatically queue up their next occurrence, so you never lose track of a repeating task.
+7. Generate today's schedule — click "Generate schedule" and the app builds a real timed plan: fixed-time tasks are locked in first, then remaining time gets filled with the highest-priority floating tasks until the budget runs out.
+8. Read the explanation — below the schedule, a plain-text summary shows why each task was scheduled or skipped (e.g. "not enough time left in the day"), so the plan is fully transparent.
 
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
+
+![alt text](image.png)
